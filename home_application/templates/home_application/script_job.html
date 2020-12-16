@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ APP_CODE }}</title>
+    <link href="https://magicbox.bk.tencent.com/static_api/v3/components_vue/2.0/bk-magic-vue.min.css" rel="stylesheet">
+    <link href="https://magicbox.bk.tencent.com/static_api/v3/assets/bootstrap-3.3.4/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://magicbox.bk.tencent.com/static_api/v3/bk/css/bk.css" rel="stylesheet">
+    <style>
+        #app {
+            position: fixed;
+            left: 220px;
+            top:20px;
+            right: 20px;
+            bottom: 0;
+            overflow: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="king-vertical-nav6 king-full-height" style="width:200px;">
+        <div class="nav-header">
+            <span class="glyphicon glyphicon-cloud logo"></span>Demo
+        </div>
+        <ul class="nav-list">
+            <li>
+                <a href="{{ SITE_URL }}" title="脚本管理">
+                    <i class="sidebar_icon icon_devel"></i>脚本管理
+                </a>
+            </li>
+            <li>
+                <a href="{{ SITE_URL }}exec_script" title="执行脚本">
+                    <i class="sidebar_icon icon_devel"></i>执行脚本
+                </a>
+            </li>
+            <li>
+                <a href="{{ SITE_URL }}script_job" title="脚本任务日志">
+                    <i class="sidebar_icon icon_devel"></i>脚本任务日志
+                </a>
+            </li>
+        </ul>
+    </div>
+    {% verbatim %}
+    <div id="app">
+        <bk-form form-type="inline">
+            <bk-form-item label="脚本来源">
+                <bk-select v-model='value' style="width:150px;">
+                    <bk-option v-for="o in souceType" :key="o.id" :id="o.id" :name="o.name">
+                    </bk-option>
+                </bk-select>
+            </bk-form-item>
+			<!-- <bk-form-item label="脚本类型">
+				<bk-select v-model='script_type' style="width:250px;">
+					<bk-option v-for="script in script_types"
+						:key="script.id" :id="script.id" :name="script.name">
+					</bk-option>
+				</bk-select>
+			</bk-form-item> -->
+			<bk-form-item label="时间段">
+                <bk-date-picker v-model="date_time_range" type="datetimerange">
+                </bk-date-picker>
+			</bk-form-item>
+            <bk-form-item>
+                <bk-button @click='get_history' theme="primary">查询</bk-button>
+            </bk-form-item>
+        </bk-form>
+
+        <hr>
+
+		<bk-table :data="history"
+        :pagination="pagination"
+        @page-change="handlePageChange"
+        @page-limit-change="handlePageLimitChange"
+        style="width: 100%">
+			<bk-table-column label="ID" prop='id' width="50"></bk-table-column>
+			<bk-table-column label="业务" prop='bk_biz_name' width="80"></bk-table-column>
+			<bk-table-column label="脚本来源" prop='script_name' width="80"></bk-table-column>
+			<bk-table-column label="作业名称" prop='job_instance_name' width="150"></bk-table-column>
+			<bk-table-column label="IP列表"  prop='ip_list'></bk-table-column>
+			<bk-table-column label="是否完成" prop='job_status' width="80">
+                <template slot-scope="scope">
+                    <span
+                      >{{
+                      scope.row.job_status==0?'未完成':'已完成'
+                      }}</span
+                    >
+                  </template>
+            </bk-table-column>
+			<bk-table-column label="状态" prop='job_status' width="80">
+                <template slot-scope="scope">
+                    <span
+                      >{{
+                      scope.row.job_status==0?STATUS[0]:STATUS[scope.row.job_status-1]
+                      }}</span
+                    >
+                  </template>
+            </bk-table-column>
+			<bk-table-column label="创建时间" prop='create_time' width="150"></bk-table-column>
+			<bk-table-column label="日志" prop='id' width="180">
+                <template slot-scope="scope">
+                    <bk-button
+                      theme="primary"
+                      size="small"
+                      @click="show_report(scope.row)"
+                      :disabled='scope.row.job_status !== 3 ? true : false'
+                      >查看</bk-button
+                    >
+                  </template>
+            </bk-table-column>
+		</bk-table>
+    </div>
+    {% endverbatim %}
+</body>
+<script src="https://cdn.bootcss.com/vue/2.5.22/vue.js"></script>
+<script src="https://magicbox.bk.tencent.com/static_api/v3/components_vue/2.0/bk-magic-vue.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/moment.js/2.29.1/locale/zh-cn.min.js"></script>
+<!-- 这个是全局配置，如果需要在js中使用app_code和site_url,则这个javascript片段一定要保留 -->
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.bootcss.com/qs/6.5.2/qs.min.js"></script>
+  <script type="text/javascript">
+    var app_code = "{{ APP_CODE }}"; // 在蓝鲸系统里面注册的"应用编码"
+    var site_url = "{{ SITE_URL }}"; // app的url前缀,在ajax调用的时候，应该加上该前缀
+    var remote_static_url = "{{ REMOTE_STATIC_URL }}"; //远程资源链接，403页面需要，不要删除
+    var debug_mode = JSON.parse("{{ DEBUG }}"); // 是否调试模式
+    var csrf_token = "{{ csrf_token }}";
+    axios.defaults.headers.common["X-CSRFToken"] = csrf_token;
+    axios.defaults.headers.post["Content-Type"] =
+      "application/x-www-form-urlencoded";
+  </script>
+<script src="https://magicbox.bk.tencent.com/static_api/v3/assets/js/jquery-1.10.2.min.js"></script>
+<script src="{{ STATIC_URL }}account/login.js?v={{ STATIC_VERSION }}"></script>
+<script src="{{ STATIC_URL }}js/csrftoken.js?v={{ STATIC_VERSION }}"></script>
+<script>
+    $('.nav-list a[href="'+window.location.pathname+'"]').addClass("active")
+</script>
+<script>
+window.onload = function () {
+    new Vue({
+        el: '#app',
+        data() {
+          return {
+            dialogFlag: false,
+            title: "",
+            souceType: [
+              { id: 1, name: "全部" },
+              { id: 2, name: "自定义" },
+              { id: 4, name: "蓝鲸" },
+            ],
+            script_type: 1,
+            script_types: [
+                    {id:1,name:"shell脚本"},
+                    {id:2,name:"bat脚本"},
+                    {id:3,name:"perl脚本"},
+                    {id:4,name:"python脚本"},
+                    {id:5,name:"Powershell脚本"}
+                ],
+            STATUS: [
+              "未执行",
+              "正在执行",
+              "执行成功",
+              "执行失败",
+              "跳过",
+              "忽略错误",
+              "等待用户",
+              "手动结束",
+              "状态异常",
+              "步骤强制终止中",
+              "步骤强制终止成功",
+              "步骤强制终止失败",
+            ],
+            date_time_range: [
+              moment()
+                .add(-6, "days")
+                .startOf("day")
+                .format("YYYY-MM-DD HH:mm:ss"),
+              moment().endOf("day").format("YYYY-MM-DD HH:mm:ss"),
+            ],
+            history: [],
+            selectData: null,
+            logData: [],
+            pagination: {
+              current: 1,
+              count: 1,
+              limit: 10,
+            },
+            value: 4,
+          };
+        },
+        created() {
+          this.search_buss();
+          this.get_history();
+        },
+        methods: {
+          search_buss() {
+            axios.get(`${site_url}api/search_business/`).then((res) => {
+              this.selectData = res.data.data;
+            });
+          },
+          get_history() {
+            axios
+              .post(
+                `${site_url}api/get_history/`,
+                Qs.stringify({
+                  bk_biz_id: this.value,
+                  startTime: this.dateFormat(this.date_time_range[0]),
+                  endTime: this.dateFormat(this.date_time_range[1]),
+                  page: this.pagination.current,
+                  pageSize: this.pagination.limit,
+                })
+              )
+              .then((res) => {
+                this.history = res.data.data;
+                this.pagination.count = res.data.total;
+              });
+          },
+          show_report(row) {
+            this.title = `${row.ip_list}的日志`;
+            alert(row.bk_job_log)
+          },
+          dateFormat(dateData) {
+            var date = new Date(dateData);
+            var y = date.getFullYear();
+            var m = date.getMonth() + 1;
+            var h = date.getHours();
+            h = h < 10 ? "0" + h : h;
+            var min = date.getMinutes();
+            min = min < 10 ? "0" + min : min;
+            var s = date.getSeconds();
+            s = s < 10 ? "0" + s : s;
+            m = m < 10 ? "0" + m : m;
+            var d = date.getDate();
+            d = d < 10 ? "0" + d : d;
+            const time = y + "-" + m + "-" + d + " " + h + ":" + min + ":" + s;
+            return time;
+          },
+          handlePageChange(page) {
+            this.pagination.current = page;
+            this.get_history();
+          },
+          handlePageLimitChange() {
+            this.pagination.limit = arguments[0];
+            this.get_history();
+          },
+        },
+    })
+}
+</script>
+
+</html>
+
+
+

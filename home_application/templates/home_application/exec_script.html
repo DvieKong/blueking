@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ APP_CODE }}</title>
+    <link
+      href="https://magicbox.bk.tencent.com/static_api/v3/components_vue/2.0/bk-magic-vue.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://magicbox.bk.tencent.com/static_api/v3/assets/bootstrap-3.3.4/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://magicbox.bk.tencent.com/static_api/v3/bk/css/bk.css"
+      rel="stylesheet"
+    />
+    <style>
+      #app {
+        position: fixed;
+        left: 220px;
+        top: 20px;
+        right: 20px;
+        bottom: 0;
+        overflow: auto;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="king-vertical-nav6 king-full-height" style="width: 200px">
+      <div class="nav-header">
+        <span class="glyphicon glyphicon-cloud logo"></span>Demo
+      </div>
+      <ul class="nav-list">
+        <li>
+          <a href="{{ SITE_URL }}" title="脚本管理">
+            <i class="sidebar_icon icon_devel"></i>脚本管理
+          </a>
+        </li>
+        <li>
+          <a href="{{ SITE_URL }}exec_script" title="执行脚本">
+            <i class="sidebar_icon icon_devel"></i>执行脚本
+          </a>
+        </li>
+        <li>
+          <a href="{{ SITE_URL }}script_job" title="脚本任务日志">
+            <i class="sidebar_icon icon_devel"></i>脚本任务日志
+          </a>
+        </li>
+      </ul>
+    </div>
+    {% verbatim %}
+    <div id="app">
+      <bk-form form-type="inline">
+        <bk-form-item label="脚本">
+          <bk-select v-model="souceScript" style="width: 150px">
+            <bk-option
+              v-for="o in scriptList"
+              :key="o.id"
+              :id="o.id"
+              :name="o.name"
+            >
+            </bk-option>
+          </bk-select>
+        </bk-form-item>
+        <bk-form-item label="参数">
+          <bk-input v-model="scipt_param"></bk-input>
+        </bk-form-item>
+        <bk-form-item>
+          <bk-button @click.stop.prevent="runScript" theme="primary"
+            >执行</bk-button
+          >
+        </bk-form-item>
+      </bk-form>
+
+      <hr />
+
+      <bk-table
+        @selection-change="changeHost"
+        :pagination="pagination"
+        :data="host_list"
+        style="width: 100%"
+      >
+        <bk-table-column type="selection" width="60"></bk-table-column>
+        <bk-table-column
+          label="内网IP"
+          prop="bk_host_innerip"
+        ></bk-table-column>
+        <bk-table-column label="系统名" prop="bk_os_name"></bk-table-column>
+        <bk-table-column label="主机名" prop="bk_host_name"></bk-table-column>
+        <bk-table-column label="系统信息">
+          <template slot-scope="scope">
+            <span
+              >{{
+              scope.row.bk_cpu+"核"+Math.ceil((scope.row.bk_mem/1024))+"G,"+scope.row.bk_disk+"G"
+              }}</span
+            >
+          </template>
+        </bk-table-column>
+      </bk-table>
+    </div>
+    {% endverbatim %}
+  </body>
+  <script src="https://cdn.bootcss.com/vue/2.5.22/vue.js"></script>
+  <script src="https://magicbox.bk.tencent.com/static_api/v3/components_vue/2.0/bk-magic-vue.min.js"></script>
+  <!-- 这个是全局配置，如果需要在js中使用app_code和site_url,则这个javascript片段一定要保留 -->
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.bootcss.com/qs/6.5.2/qs.min.js"></script>
+  <script type="text/javascript">
+    var app_code = "{{ APP_CODE }}"; // 在蓝鲸系统里面注册的"应用编码"
+    var site_url = "{{ SITE_URL }}"; // app的url前缀,在ajax调用的时候，应该加上该前缀
+    var remote_static_url = "{{ REMOTE_STATIC_URL }}"; //远程资源链接，403页面需要，不要删除
+    var debug_mode = JSON.parse("{{ DEBUG }}"); // 是否调试模式
+    var csrf_token = "{{ csrf_token }}";
+    axios.defaults.headers.common["X-CSRFToken"] = csrf_token;
+    axios.defaults.headers.post["Content-Type"] =
+      "application/x-www-form-urlencoded";
+  </script>
+  <script src="https://magicbox.bk.tencent.com/static_api/v3/assets/js/jquery-1.10.2.min.js"></script>
+  <script src="{{ STATIC_URL }}account/login.js?v={{ STATIC_VERSION }}"></script>
+  <script src="{{ STATIC_URL }}js/csrftoken.js?v={{ STATIC_VERSION }}"></script>
+  <script>
+    $('.nav-list a[href="' + window.location.pathname + '"]').addClass(
+      "active"
+    );
+  </script>
+  <script>
+    window.onload = function () {
+      new Vue({
+        el: "#app",
+        data() {
+          return {
+            ips: null,
+            souceScript: null,
+            scipt_param: null,
+            scriptList: [],
+            host_list: [],
+            pagination: {
+              current: 1,
+              count: 1,
+              limit: 1000,
+            },
+          };
+        },
+        created() {
+          this.get_script_list();
+          this.get_host_list();
+        },
+        methods: {
+          changeHost(val) {
+            this.ips = val.map((item) => item.bk_host_innerip).join(",");
+          },
+          get_host_list() {
+            axios
+              .post(
+                `${site_url}api/search_host/`,
+                Qs.stringify({
+                  bk_biz_id: 4,
+                  page: this.pagination.current,
+                  pageSize: this.pagination.limit,
+                })
+              )
+              .then(async (res) => {
+                this.pagination.count = res.data.data.length;
+                this.host_list = res.data.data;
+              });
+          },
+          runScript() {
+            if(!this.ips){
+              return this.$bkMessage({message: '请选择主机列表'})
+            }
+            var script_name = this.scriptList.find(item => item.id == this.souceScript)['name']
+            axios
+              .post(
+                `${site_url}api/fast_execute_script/`,
+                Qs.stringify({
+                  bk_biz_id: 4,
+                  script_id: this.souceScript,
+                  scipt_param: this.scipt_param,
+                  script_name: script_name,
+                  ips: this.ips,
+                })
+              )
+              .then((res) => {
+                this.$bkMessage({ message: res.data.message });
+              });
+          },
+          get_script_list() {
+            axios
+              .post(
+                `${site_url}api/get_script_list/`,
+                Qs.stringify({
+                  bk_biz_id: 4,
+                  page: this.pagination.current,
+                  pageSize: this.pagination.limit,
+                  return_script_content: true,
+                })
+              )
+              .then((res) => {
+                this.scriptList = res.data.data;
+              });
+          },
+        },
+      });
+    };
+  </script>
+</html>
